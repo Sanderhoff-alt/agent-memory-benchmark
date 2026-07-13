@@ -37,30 +37,30 @@ cp .env.example .env   # or just create .env with:
 
 ```bash
 # List available datasets, memory providers, and modes
-uv run amb providers
+uv run omb providers
 
 # List domains for a dataset
-uv run amb domains --dataset personamem
+uv run omb domains --dataset personamem
 
 # Run a benchmark
-uv run amb run --dataset personamem --domain 32k --memory bm25
+uv run omb run --dataset personamem --domain 32k --memory bm25
 
 # Limit scale for a quick test
-uv run amb run --dataset personamem --domain 32k --memory bm25 --query-limit 20
+uv run omb run --dataset personamem --domain 32k --memory bm25 --query-limit 20
 
 # Oracle mode: ingest only gold documents (tests generation quality in isolation)
-uv run amb run --dataset personamem --domain 32k --memory bm25 --oracle
+uv run omb run --dataset personamem --domain 32k --memory bm25 --oracle
 
 # Dataset statistics
-uv run amb dataset-stats --dataset personamem
+uv run omb dataset-stats --dataset personamem
 
 # Browse results in the browser
-uv run amb view
+uv run omb view
 ```
 
 ## Results
 
-Results are saved to `outputs/{dataset}/{memory}/{mode}/{domain}.json` and can be explored with `uv run amb view`.
+Results are saved to `outputs/{dataset}/{memory}/{mode}/{domain}.json` and can be explored with `uv run omb view`.
 
 ## Requirements
 
