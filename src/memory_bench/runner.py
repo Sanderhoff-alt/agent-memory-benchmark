@@ -24,6 +24,28 @@ from .models import EvalSummary, QueryResult
 console = Console()
 
 
+def _is_transient_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return any(
+        marker in msg
+        for marker in (
+            "502",
+            "503",
+            "504",
+            "529",
+            "429",
+            "connection error",
+            "connection reset",
+            "connection aborted",
+            "timeout",
+            "timed out",
+            "read error",
+            "overloaded",
+            "quota",
+        )
+    )
+
+
 def _score_mcq(answer: str, gold_answers: list[str]) -> tuple[bool, str]:
     """Exact letter match — no LLM needed for multiple-choice questions."""
     def norm(s: str) -> str:
@@ -164,7 +186,7 @@ class EvalRunner:
                     return await _process_one_attempt(q)
                 except Exception as exc:
                     msg = str(exc)
-                    if _attempt < 3 and any(code in msg for code in ("502", "503", "529", "429", "overloaded", "quota")):
+                    if _attempt < 3 and _is_transient_error(exc):
                         wait = 15 * (2 ** _attempt)
                         logger.warning("[query:%s] transient error (attempt %d/4), retrying in %ds: %s", q.id, _attempt + 1, wait, msg[:120])
                         await asyncio.sleep(wait)
