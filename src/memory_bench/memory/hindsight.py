@@ -137,6 +137,17 @@ class _HindsightBase(MemoryProvider):
         self._bank_id, self._dataset, self._category = _bank_id_from_store_dir(store_dir)
         self._per_unit = unit_ids is not None
 
+    def cleanup(self) -> None:
+        if self._async_client is None:
+            return
+        try:
+            import asyncio
+            asyncio.run(self._async_client.close())
+        except Exception:
+            pass
+        finally:
+            self._async_client = None
+
     # ── Bank creation (sync) ──────────────────────────────────────────────────
 
     _BEAM_RETAIN_MISSION = (
