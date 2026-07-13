@@ -4,8 +4,10 @@ LongMemEval dataset (https://huggingface.co/datasets/xiaowu0162/longmemeval-clea
 A benchmark for long-term memory in LLM-based chat assistants with ~500 questions
 across 6 question types, each with its own haystack of conversation sessions.
 
-Data is auto-downloaded from HuggingFace on first use. You can also set
-LONGMEMEVAL_DATA_PATH to point at a local copy.
+English data is auto-downloaded from HuggingFace on first use. You can also set
+LONGMEMEVAL_DATA_PATH to point at a local copy. The translated Chinese split is
+downloaded from https://github.com/Sanderhoff-alt/longmemeval-zh on first use,
+cached locally, and can be overridden with LONGMEMEVAL_ZH_DATA_PATH.
 
 Structure
 ---------
@@ -25,6 +27,7 @@ Categories (query-level, by question_type):
 """
 import json
 import urllib.request
+import gzip
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -39,8 +42,12 @@ _DATA_URL = (
     "https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned"
     "/resolve/main/longmemeval_s_cleaned.json"
 )
+_ZH_DATA_URL = (
+    "https://raw.githubusercontent.com/Sanderhoff-alt/longmemeval-zh/main/"
+    "datasets/longmemeval_s_cleaned.llm.zh.json.gz"
+)
 
-SPLITS = ["s"]
+SPLITS = ["s", "zh"]
 
 _QUESTION_TYPES = [
     "single-session-user",
@@ -56,8 +63,12 @@ class LongMemEvalDataset(Dataset):
     """
     LongMemEval benchmark — long-term memory in LLM-based chat assistants.
 
-    Data is auto-downloaded from HuggingFace on first use.
+    English data is auto-downloaded from HuggingFace on first use.
     Set LONGMEMEVAL_DATA_PATH to point at a local JSON file to skip download.
+    Chinese data is auto-downloaded from the longmemeval-zh GitHub project on
+    first use and reused from the local cache afterwards. Set
+    LONGMEMEVAL_ZH_DATA_PATH to point at a local translated JSON or JSON.GZ file
+    to skip download.
     """
 
     name = "longmemeval"
@@ -72,25 +83,41 @@ class LongMemEvalDataset(Dataset):
 
     def __init__(self) -> None:
         import os
-        env = os.environ.get("LONGMEMEVAL_DATA_PATH")
-        self._local_path: Path | None = Path(env) if env else None
+        en_env = os.environ.get("LONGMEMEVAL_DATA_PATH")
+        zh_env = os.environ.get("LONGMEMEVAL_ZH_DATA_PATH")
+        self._local_paths: dict[str, Path] = {}
+        if en_env:
+            self._local_paths["s"] = Path(en_env)
+        if zh_env:
+            self._local_paths["zh"] = Path(zh_env)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _data_path(self) -> Path:
-        if self._local_path:
-            return self._local_path
+    def _data_path(self, split: str) -> Path:
+        if split not in SPLITS:
+            raise ValueError(f"Unknown LongMemEval split: {split}. Available: {', '.join(SPLITS)}")
+        if split in self._local_paths:
+            return self._local_paths[split]
         cache = dataset_cache_dir("longmemeval")
+        if split == "zh":
+            path = cache / "longmemeval_s_cleaned.llm.zh.json.gz"
+            if not path.exists():
+                print("Downloading LongMemEval zh dataset from Sanderhoff-alt/longmemeval-zh...")
+                urllib.request.urlretrieve(_ZH_DATA_URL, path)
+            return path
+
         path = cache / "longmemeval_s_cleaned.json"
         if not path.exists():
             print("Downloading LongMemEval dataset (~200MB)…")
             urllib.request.urlretrieve(_DATA_URL, path)
         return path
 
-    def _load_raw(self) -> list[dict]:
-        with open(self._data_path(), encoding="utf-8") as f:
+    def _load_raw(self, split: str) -> list[dict]:
+        path = self._data_path(split)
+        opener = gzip.open if path.suffix == ".gz" else open
+        with opener(path, "rt", encoding="utf-8") as f:
             return json.load(f)
 
     @staticmethod
@@ -264,7 +291,7 @@ If it's correct, set correct=true."""
         return axes
 
     def load_queries(self, split: str, category: str | None = None, limit: int | None = None) -> list[Query]:
-        data = self._load_raw()
+        data = self._load_raw(split)
         queries: list[Query] = []
 
         for item in data:
@@ -305,7 +332,7 @@ If it's correct, set correct=true."""
         return queries
 
     def load_documents(self, split: str, category: str | None = None, limit: int | None = None, ids: set[str] | None = None, user_ids: set[str] | None = None) -> list[Document]:
-        data = self._load_raw()
+        data = self._load_raw(split)
         documents: list[Document] = []
 
         for item in data:
@@ -354,20 +381,22 @@ If it's correct, set correct=true."""
         return documents
 
     def dataset_stats(self, console: Console, **_) -> None:
-        data = self._load_raw()
         table = Table(title="LongMemEval dataset stats")
+        table.add_column("Split", style="bold")
         table.add_column("Metric", style="bold")
         table.add_column("Value", justify="right")
 
         from collections import Counter
-        cat_counts: Counter = Counter()
-        total_sessions = 0
-        for item in data:
-            cat_counts[item.get("question_type", "unknown")] += 1
-            total_sessions += len(item.get("haystack_sessions", []))
+        for split in SPLITS:
+            data = self._load_raw(split)
+            cat_counts: Counter = Counter()
+            total_sessions = 0
+            for item in data:
+                cat_counts[item.get("question_type", "unknown")] += 1
+                total_sessions += len(item.get("haystack_sessions", []))
 
-        table.add_row("Questions", str(len(data)))
-        table.add_row("Total sessions (docs)", str(total_sessions))
-        for cat in _QUESTION_TYPES:
-            table.add_row(f"  {cat}", str(cat_counts.get(cat, 0)))
+            table.add_row(split, "Questions", str(len(data)))
+            table.add_row(split, "Total sessions (docs)", str(total_sessions))
+            for cat in _QUESTION_TYPES:
+                table.add_row(split, f"  {cat}", str(cat_counts.get(cat, 0)))
         console.print(table)
