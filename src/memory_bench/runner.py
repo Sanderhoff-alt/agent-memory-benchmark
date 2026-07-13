@@ -486,5 +486,5 @@ class EvalRunner:
         d["avg_retrieve_time_ms"] = round(sum(rec_times)  / len(rec_times),  1) if rec_times  else None
         d["avg_context_tokens"]   = round(sum(ctx_tokens) / len(ctx_tokens), 1) if ctx_tokens else None
         d["results"]       = results_dicts
-        path.write_text(json.dumps(d, indent=2))
+        path.write_text(json.dumps(d, indent=2, ensure_ascii=False))
         console.print(f"\n[green]Saved → {path}[/green]")
