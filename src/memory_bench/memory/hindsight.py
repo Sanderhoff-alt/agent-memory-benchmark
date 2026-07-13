@@ -88,6 +88,30 @@ def _bank_id_from_store_dir(store_dir: Path) -> tuple[str, str | None, str | Non
         return "bench", None, None
 
 
+def _get_int_env(name: str) -> int | None:
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+
+
+def _get_bool_env(name: str) -> bool | None:
+    true_values = {"1", "true", "yes", "on"}
+    false_values = {"0", "false", "no", "off"}
+    value = os.environ.get(name)
+    if value is None or value == "":
+        return None
+    normalized = value.strip().lower()
+    if normalized in true_values:
+        return True
+    if normalized in false_values:
+        return False
+    raise ValueError(f"{name} must be a boolean ({', '.join(sorted(true_values | false_values))}), got {value!r}")
+
+
 class _HindsightBase(MemoryProvider):
     """Shared logic for Hindsight memory providers."""
 
@@ -100,6 +124,9 @@ class _HindsightBase(MemoryProvider):
         self._async_client = None  # lazily created (cloud only)
         self._per_unit = False
         self._resume = os.environ.get("AMB_RESUME", "").lower() in ("1", "true")
+        self._recall_max_tokens_override = _get_int_env("OMB_HINDSIGHT_MAX_TOKENS")
+        self._recall_max_chunk_tokens_override = _get_int_env("OMB_HINDSIGHT_MAX_CHUNK_TOKENS")
+        self._recall_include_chunks_override = _get_bool_env("OMB_HINDSIGHT_INCLUDE_CHUNKS")
 
     def _bank_id_for(self, user_id: str | None) -> str:
         if self._per_unit and user_id is not None:
@@ -346,6 +373,12 @@ class _HindsightBase(MemoryProvider):
             max_tokens = 12288
         else:
             max_tokens = 32768
+        if self._recall_max_tokens_override is not None:
+            max_tokens = self._recall_max_tokens_override
+        if self._recall_max_chunk_tokens_override is not None:
+            max_chunk_tokens = self._recall_max_chunk_tokens_override
+        if self._recall_include_chunks_override is not None:
+            include_chunks = self._recall_include_chunks_override
         if max_chunk_tokens == 0:
             include_chunks = False
         kwargs: dict = {
