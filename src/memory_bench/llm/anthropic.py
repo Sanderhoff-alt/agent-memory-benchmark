@@ -106,8 +106,39 @@ def _validate_schema_payload(payload: dict, schema: Schema) -> dict:
     return payload
 
 
+def _parse_custom_headers(raw: str | None) -> dict[str, str] | None:
+    if not raw:
+        return None
+    raw = raw.strip()
+    if not raw:
+        return None
+
+    if raw.startswith("@") and os.path.isfile(raw[1:]):
+        with open(raw[1:], "r", encoding="utf-8") as f:
+            data = json.load(f)
+    elif not raw.startswith("{") and os.path.isfile(raw):
+        with open(raw, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    else:
+        try:
+            data = json.loads(raw)
+        except Exception as e:
+            raise ValueError(f"Failed to parse ANTHROPIC_CUSTOM_HEADERS as JSON: {e}") from e
+
+    if not isinstance(data, dict):
+        raise ValueError(f"ANTHROPIC_CUSTOM_HEADERS must be a JSON object, got {type(data).__name__}")
+
+    headers: dict[str, str] = {}
+    for k, v in data.items():
+        if isinstance(v, (dict, list)):
+            headers[str(k)] = json.dumps(v, ensure_ascii=False, separators=(",", ":"))
+        else:
+            headers[str(k)] = str(v)
+    return headers
+
+
 class AnthropicLLM(LLM):
-    def __init__(self, model: str | None = None):
+    def __init__(self, model: str | None = None, default_headers: dict[str, str] | None = None):
         from anthropic import Anthropic
 
         api_key = os.environ.get("ANTHROPIC_API_KEY")
@@ -115,9 +146,17 @@ class AnthropicLLM(LLM):
             raise RuntimeError("Anthropic provider requires ANTHROPIC_API_KEY")
 
         base_url = os.environ.get("ANTHROPIC_BASE_URL")
+        env_headers = _parse_custom_headers(os.environ.get("ANTHROPIC_CUSTOM_HEADERS"))
+        merged_headers: dict[str, str] = {}
+        if env_headers:
+            merged_headers.update(env_headers)
+        if default_headers:
+            merged_headers.update(default_headers)
+
         self._client = Anthropic(
             api_key=api_key,
             base_url=base_url or None,
+            default_headers=merged_headers or None,
             max_retries=0,
         )
         self._model = (

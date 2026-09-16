@@ -3,7 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from memory_bench.llm.anthropic import AnthropicLLM
+from memory_bench.llm.anthropic import AnthropicLLM, _parse_custom_headers
 from memory_bench.llm.base import Schema
 
 
@@ -117,6 +117,75 @@ class AnthropicLLMTests(unittest.TestCase):
                 return "invalid request"
 
         self.assertFalse(AnthropicLLM._is_retryable_status_error(BadRequest()))
+
+    def test_parse_custom_headers_empty(self):
+        self.assertIsNone(_parse_custom_headers(None))
+        self.assertIsNone(_parse_custom_headers(""))
+        self.assertIsNone(_parse_custom_headers("   "))
+
+    def test_parse_custom_headers_valid_json(self):
+        raw = '{"X-Custom": "val", "num": 123}'
+        headers = _parse_custom_headers(raw)
+        self.assertEqual(headers, {"X-Custom": "val", "num": "123"})
+
+    def test_parse_custom_headers_nested_object_serialized(self):
+        raw = '{"X-Nested-Header": {"k1": "v1", "k2": "v2"}}'
+        headers = _parse_custom_headers(raw)
+        self.assertEqual(
+            headers,
+            {"X-Nested-Header": '{"k1":"v1","k2":"v2"}'},
+        )
+
+    def test_parse_custom_headers_invalid_json(self):
+        with self.assertRaises(ValueError):
+            _parse_custom_headers("not-json")
+
+    def test_parse_custom_headers_non_dict_json(self):
+        with self.assertRaises(ValueError):
+            _parse_custom_headers('["not", "a", "dict"]')
+
+    def test_init_with_custom_headers_env(self):
+        headers_json = '{"X-Trace-Id": "mock-trace-123", "X-Payload": {"env": "test"}}'
+        with patch.dict(
+            os.environ,
+            {
+                "ANTHROPIC_API_KEY": "test-key",
+                "ANTHROPIC_CUSTOM_HEADERS": headers_json,
+            },
+            clear=False,
+        ), patch("anthropic.Anthropic") as mock_anthropic:
+            llm = AnthropicLLM()
+            mock_anthropic.assert_called_once_with(
+                api_key="test-key",
+                base_url=None,
+                default_headers={
+                    "X-Trace-Id": "mock-trace-123",
+                    "X-Payload": '{"env":"test"}',
+                },
+                max_retries=0,
+            )
+
+    def test_init_with_explicit_default_headers_override(self):
+        headers_json = '{"X-Header": "env-val", "X-Keep": "1"}'
+        with patch.dict(
+            os.environ,
+            {
+                "ANTHROPIC_API_KEY": "test-key",
+                "ANTHROPIC_CUSTOM_HEADERS": headers_json,
+            },
+            clear=False,
+        ), patch("anthropic.Anthropic") as mock_anthropic:
+            llm = AnthropicLLM(default_headers={"X-Header": "override-val", "X-Extra": "2"})
+            mock_anthropic.assert_called_once_with(
+                api_key="test-key",
+                base_url=None,
+                default_headers={
+                    "X-Header": "override-val",
+                    "X-Keep": "1",
+                    "X-Extra": "2",
+                },
+                max_retries=0,
+            )
 
 
 if __name__ == "__main__":
