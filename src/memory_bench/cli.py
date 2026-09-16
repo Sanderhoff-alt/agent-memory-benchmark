@@ -94,7 +94,7 @@ def run(
     unit: str = typer.Option(None, "--unit", help="Run only one isolation unit (by id) with all its questions — e.g. one conversation for beam"),
     doc_limit: int = typer.Option(None, "--doc-limit", help="Max number of documents to ingest"),
     oracle: bool = typer.Option(False, "--oracle", help="Ingest only gold documents (bypasses retrieval noise)"),
-    skip_ingestion: bool = typer.Option(False, "--skip-ingestion", help="Skip ingestion and query the existing memory state"),
+    skip_ingestion: bool = typer.Option(False, "--skip-ingestion", envvar=["BENCH_SKIP_INGESTION", "OMB_SKIP_INGESTION"], help="Skip ingestion and query the existing memory state"),
     skip_ingested: bool = typer.Option(False, "--skip-ingested", help="Skip units already present in a previous run's output (resume mode for unit-sequential datasets)"),
     skip_retrieval: bool = typer.Option(False, "--skip-retrieval", help="Skip retrieval and re-run answer generation using cached contexts from the previous run"),
     skip_answer: bool = typer.Option(False, "--skip-answer", help="Skip retrieval and answer generation entirely — re-judge cached answers from the previous run"),
