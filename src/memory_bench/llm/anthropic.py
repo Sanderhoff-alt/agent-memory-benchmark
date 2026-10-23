@@ -178,10 +178,13 @@ class AnthropicLLM(LLM):
             "additionalProperties": False,
         }
 
+    def _max_tokens(self) -> int:
+        return int(os.environ.get("ANTHROPIC_MAX_TOKENS", "16384"))
+
     def _generate_with_tool(self, prompt: str, schema: Schema) -> dict:
         response = self._client.messages.create(
             model=self._model,
-            max_tokens=4096,
+            max_tokens=self._max_tokens(),
             temperature=0.0,
             messages=[{"role": "user", "content": prompt}],
             tools=[
@@ -216,18 +219,19 @@ class AnthropicLLM(LLM):
         )
         response = self._client.messages.create(
             model=self._model,
-            max_tokens=4096,
+            max_tokens=self._max_tokens(),
             temperature=0.0,
             system=system_prompt,
             messages=[{"role": "user", "content": prompt}],
         )
         text = "".join(block.text for block in response.content if getattr(block, "type", None) == "text")
+        stop_reason = getattr(response, "stop_reason", None)
         try:
             payload = _parse_json_payload(text)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as exc:
             coerced = _coerce_text_payload(text, schema)
             if coerced is None:
-                raise _StructuredOutputError("Model response was not valid JSON") from None
+                raise _StructuredOutputError(f"Model response was not valid JSON: {exc} (stop_reason={stop_reason})") from None
             payload = coerced
         return _validate_schema_payload(payload, schema)
 
